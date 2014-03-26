@@ -7,6 +7,7 @@ import com.amazonaws.services.simpleworkflow.AmazonSimpleWorkflow
 import com.amazonaws.services.simpleworkflow.AmazonSimpleWorkflowClient
 import com.amazonaws.services.simpleworkflow.flow.ActivityWorker
 import com.amazonaws.services.simpleworkflow.flow.WorkflowWorker
+import com.amazonaws.services.simpleworkflow.model.DescribeWorkflowExecutionRequest
 import com.amazonaws.services.simpleworkflow.model.DomainInfo
 import com.amazonaws.services.simpleworkflow.model.ListDomainsRequest
 import com.amazonaws.services.simpleworkflow.model.RegisterDomainRequest
@@ -139,23 +140,45 @@ class GlistenExample {
         activityWorker.addActivitiesImplementations([bayAreaTripActivities])
         activityWorker.start()
 
+        //////////////////////
         // start the workflow
+        //////////////////////
         glistenWorkflowClient.asWorkflow().start(userName, previouslyVisited)
 
-        log.info("Running workflow...")
-        log.info("Check the AWS console for the status of this workflow.")
+        final workflowExecution = glistenWorkflowClient.getWorkflowExecution()
+        final workflowId = workflowExecution.getWorkflowId()
 
-        // keeps the test running until the workflow is finished
-        Thread.sleep(30 * 1000)
+        log.info("Running workflow execution $workflowId")
+
+        def running = true
+
+        ///////////////////////////
+        // wait for it to finish
+        ///////////////////////////
+        while(running) {
+            log.info("Workflow still running...")
+
+            Thread.currentThread().sleep(5 * 1000)
+
+            final describeWorkflowExecutionRequest = new DescribeWorkflowExecutionRequest()
+                    .withExecution(workflowExecution)
+                    .withDomain(DomainName)
+
+            final workflowExecutionDetail = simpleWorkflow.describeWorkflowExecution(describeWorkflowExecutionRequest)
+
+            final workflowExecutionInfo = workflowExecutionDetail.getExecutionInfo()
+            final executionStatus = workflowExecutionInfo.getExecutionStatus()
+
+            running = executionStatus == "OPEN"
+        }
 
         // This would be much better if it checked to see if the workflow were completed.
         // Unfortunately, I don't know how to reliably get the Workflow Execution ID for the workflow we just started.
 
-        // TODO: programmatically determine if the workflow is complete
         // TODO: programmatically retrieve events and activities and print to console
         // TODO: gracefully shutdown all workers
 
-        log.info("The workflow should now be complete.")
+        log.info("The workflow is now complete.")
 
     }
 
