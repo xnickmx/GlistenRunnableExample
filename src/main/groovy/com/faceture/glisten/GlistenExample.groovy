@@ -24,6 +24,8 @@ import com.netflix.glisten.example.trip.BayAreaTripWorkflowImpl
 import org.apache.commons.lang3.BooleanUtils
 import org.apache.log4j.Logger
 
+import java.util.concurrent.TimeUnit
+
 /**
  * Example for how to use the Netflix Glisten library.
  * https://github.com/Netflix/glisten
@@ -150,11 +152,11 @@ class GlistenExample {
 
         log.info("Running workflow execution $workflowId")
 
-        def running = true
-
         ///////////////////////////
         // wait for it to finish
         ///////////////////////////
+
+        def running = true
         while(running) {
             log.info("Workflow still running...")
 
@@ -176,9 +178,16 @@ class GlistenExample {
         // Unfortunately, I don't know how to reliably get the Workflow Execution ID for the workflow we just started.
 
         // TODO: programmatically retrieve events and activities and print to console
-        // TODO: gracefully shutdown all workers
 
         log.info("The workflow is now complete.")
+
+        // gracefully shutdown all workers
+        log.info("Gracefully shutting down workers.")
+        activityWorker.shutdownAndAwaitTermination(30, TimeUnit.SECONDS)
+        log.info("Activity worker stopped.")
+
+        workflowWorker.shutdownAndAwaitTermination(30, TimeUnit.SECONDS)
+        log.info("Workflow worker stopped.")
 
     }
 
