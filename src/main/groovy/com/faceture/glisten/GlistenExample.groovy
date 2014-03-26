@@ -16,7 +16,9 @@ import com.amazonaws.services.simpleworkflow.model.HistoryEvent
 import com.amazonaws.services.simpleworkflow.model.ListDomainsRequest
 import com.amazonaws.services.simpleworkflow.model.RegisterDomainRequest
 import com.amazonaws.services.simpleworkflow.model.RegistrationStatus
+import com.netflix.glisten.HistoryAnalyzer
 import com.netflix.glisten.InterfaceBasedWorkflowClient
+import com.netflix.glisten.LogMessage
 import com.netflix.glisten.WorkflowClientFactory
 import com.netflix.glisten.WorkflowDescriptionTemplate
 import com.netflix.glisten.WorkflowTags
@@ -238,13 +240,20 @@ class GlistenExample {
             running = executionStatus == "OPEN"
         }
 
-        // This would be much better if it checked to see if the workflow were completed.
-        // Unfortunately, I don't know how to reliably get the Workflow Execution ID for the workflow we just started.
-
-        // TODO: programmatically retrieve events and activities and print to console
-
         log.info("The workflow is now complete.")
-        log.info("Final workflow execution context: $executionContext")
+
+        log.info("Final raw workflow execution context: $executionContext")
+
+        // Use the Glisten HistoryAnalyzer to get nicely formatted log messages
+        final historyAnalyzer = HistoryAnalyzer.of(historyEvents)
+        final logMessages = historyAnalyzer.getLogMessages()
+        log.info("Log messages processed by the Glisten HistoryAnalyzer:")
+        logMessages.each { final LogMessage logMessage ->
+            final timestamp = logMessage.getTimestamp()
+            final text = logMessage.getText()
+
+            log.info("\t\t$timestamp $text")
+        }
 
         // gracefully shutdown all workers
         log.info("Gracefully shutting down workers.")
