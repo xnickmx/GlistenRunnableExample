@@ -7,8 +7,12 @@ import com.amazonaws.services.simpleworkflow.AmazonSimpleWorkflow
 import com.amazonaws.services.simpleworkflow.AmazonSimpleWorkflowClient
 import com.amazonaws.services.simpleworkflow.flow.ActivityWorker
 import com.amazonaws.services.simpleworkflow.flow.WorkflowWorker
+import com.amazonaws.services.simpleworkflow.model.ActivityType
+import com.amazonaws.services.simpleworkflow.model.DescribeActivityTypeRequest
 import com.amazonaws.services.simpleworkflow.model.DescribeWorkflowExecutionRequest
 import com.amazonaws.services.simpleworkflow.model.DomainInfo
+import com.amazonaws.services.simpleworkflow.model.GetWorkflowExecutionHistoryRequest
+import com.amazonaws.services.simpleworkflow.model.HistoryEvent
 import com.amazonaws.services.simpleworkflow.model.ListDomainsRequest
 import com.amazonaws.services.simpleworkflow.model.RegisterDomainRequest
 import com.amazonaws.services.simpleworkflow.model.RegistrationStatus
@@ -156,12 +160,71 @@ class GlistenExample {
         // wait for it to finish
         ///////////////////////////
 
+        List<HistoryEvent> historyEvents = []
         def running = true
+        def executionContext = ""
         while(running) {
             log.info("Workflow still running...")
 
+            // sleep a bit
             Thread.currentThread().sleep(5 * 1000)
 
+            // get the history of workflow events
+            final getWorkflowExecutionHistoryRequest = new GetWorkflowExecutionHistoryRequest()
+                    .withDomain(DomainName)
+                    .withExecution(workflowExecution)
+            final history = simpleWorkflow.getWorkflowExecutionHistory(getWorkflowExecutionHistoryRequest)
+
+            final latestEvents = history.getEvents()
+
+            ///////////////////////
+            // log the new events
+            ///////////////////////
+
+            final newEvents = latestEvents - historyEvents
+            newEvents.each { HistoryEvent historyEvent ->
+                log.info("Event: ${historyEvent.getEventTimestamp()}, ID: ${historyEvent.getEventId()}, Type: ${historyEvent.getEventType()}")
+
+                final eventType = historyEvent.getEventType()
+                if (eventType == "ActivityTaskScheduled") {
+                    final activityTaskScheduledEventAttributes = historyEvent.getActivityTaskScheduledEventAttributes()
+                    final activityId = activityTaskScheduledEventAttributes.getActivityId()
+                    final activityType = activityTaskScheduledEventAttributes.getActivityType()
+                    final activityTypeName = activityType.getName()
+                    final activityTypeVersion = activityType.getVersion()
+                    final input = activityTaskScheduledEventAttributes.getInput()
+
+                    log.info("ActivityTaskScheduled details -- activity ID: $activityId, name: $activityTypeName, version: $activityTypeVersion, input: $input")
+                }
+                else if (eventType == "ActivityTaskStarted") {
+                    final activityTaskStartedEventAttributes = historyEvent.getActivityTaskStartedEventAttributes()
+                    final workerIdentity = activityTaskStartedEventAttributes.getIdentity()
+                    final scheduledEventId = activityTaskStartedEventAttributes.getScheduledEventId()
+
+                    log.info("ActivityTaskStarted details -- worker ID: $workerIdentity, scheduled event ID: $scheduledEventId")
+                }
+                else if (eventType == "ActivityTaskCompleted") {
+                    final activityTaskCompletedEventAttributes = historyEvent.getActivityTaskCompletedEventAttributes()
+                    final scheduledEventId = activityTaskCompletedEventAttributes.getScheduledEventId()
+                    final result = activityTaskCompletedEventAttributes.getResult()
+                    final startedEventId = activityTaskCompletedEventAttributes.getStartedEventId()
+
+                    log.info("ActivityTaskCompleted details -- scheduled event ID: $scheduledEventId, result: $result, started event ID: $startedEventId")
+                }
+                else if (eventType == "DecisionTaskCompleted") {
+                    final decisionTaskCompletedEventAttributes = historyEvent.getDecisionTaskCompletedEventAttributes()
+
+                    final dtceExecutionContext = decisionTaskCompletedEventAttributes.getExecutionContext()
+                    final startedEventId = decisionTaskCompletedEventAttributes.getStartedEventId()
+                    final scheduledEventId = decisionTaskCompletedEventAttributes.getScheduledEventId()
+
+                    log.info("DecisionTaskCompletedEvent details -- execution context: $dtceExecutionContext, scheduled event ID: $scheduledEventId, started event ID: $startedEventId")
+                }
+            }
+            // store the events
+            historyEvents = latestEvents
+
+            // see if the workflow is still running:
             final describeWorkflowExecutionRequest = new DescribeWorkflowExecutionRequest()
                     .withExecution(workflowExecution)
                     .withDomain(DomainName)
@@ -170,6 +233,7 @@ class GlistenExample {
 
             final workflowExecutionInfo = workflowExecutionDetail.getExecutionInfo()
             final executionStatus = workflowExecutionInfo.getExecutionStatus()
+            executionContext = workflowExecutionDetail.getLatestExecutionContext()
 
             running = executionStatus == "OPEN"
         }
@@ -180,6 +244,7 @@ class GlistenExample {
         // TODO: programmatically retrieve events and activities and print to console
 
         log.info("The workflow is now complete.")
+        log.info("Final workflow execution context: $executionContext")
 
         // gracefully shutdown all workers
         log.info("Gracefully shutting down workers.")
